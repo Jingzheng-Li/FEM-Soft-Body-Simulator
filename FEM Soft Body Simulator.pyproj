@@ -1,0 +1,60 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>30cab741-c307-4ef7-ad09-965447e5d6f8</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>FEM Softy Body Simulator\test_new_implicit.py</StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>FEM Soft Body Simulator</Name>
+    <RootNamespace>FEM Soft Body Simulator</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="FEM Softy Body Simulator\AutoDiff_Explicit_Soft_Body_Simulator.py" />
+    <Compile Include="FEM Softy Body Simulator\Explicit_FEM_Soft_Body_Simulator.py" />
+    <Compile Include="FEM Softy Body Simulator\Implicit_FEM_Soft_Body_Simulator.py" />
+    <Compile Include="FEM Softy Body Simulator\Semi_Implicit_FEM_Soft_Body_Simulator.py" />
+    <Compile Include="FEM Softy Body Simulator\test_new_implicit.py" />
+    <Compile Include="FEM Softy Body Simulator\test_taichi_example.py" />
+    <Compile Include="Numerical Method\Linear_Equation_Solver.py" />
+    <Compile Include="Numerical Method\Newton_Method.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Explanation\" />
+    <Folder Include="FEM Softy Body Simulator\" />
+    <Folder Include="Numerical Method\" />
+    <Folder Include="tetrahedral-models\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Explanation\thesis outline.docx" />
+    <Content Include="tetrahedral-models\cube.1.ele" />
+    <Content Include="tetrahedral-models\cube.1.face" />
+    <Content Include="tetrahedral-models\cube.1.node" />
+    <Content Include="tetrahedral-models\ellell.1.ele" />
+    <Content Include="tetrahedral-models\ellell.1.face" />
+    <Content Include="tetrahedral-models\ellell.1.node" />
+    <Content Include="tetrahedral-models\example.1.ele" />
+    <Content Include="tetrahedral-models\example.1.face" />
+    <Content Include="tetrahedral-models\example.1.node" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Uncomment the CoreCompile target to enable the Build command in
+       Visual Studio and specify your pre- and post-build commands in
+       the BeforeBuild and AfterBuild targets below. -->
+  <!--<Target Name="CoreCompile" />-->
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+</Project>
