@@ -115,9 +115,8 @@ class Object:
         self.la = ti.field(dtype=ti.f32, shape=())
         self.color = (0.99,0.75,0.89)
 
-        self.velocity = ti.Vector.field(self.dim, dtype=ti.f32, shape=self.vn)
-        self.force = ti.Vector.field(self.dim, dtype=ti.f32, shape=self.vn)
-
+        self.velocity = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
+        self.force = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
         self.element_volume = ti.field(dtype=ti.f32, shape=self.en)
         self.B = ti.Matrix.field(self.dim, self.dim, dtype=ti.f32, shape=self.en) # a square matrix
 
@@ -147,7 +146,9 @@ class Object:
         for i in range(self.vn):
             self.node[i] = [self.v[3*i], self.v[3*i+1]+8.0, self.v[3*i+2]] 
             self.initial_node[i] = [self.v[3*i], self.v[3*i+1]+8.0, self.v[3*i+2]]
-            self.velocity[i] = [0.0, 0.0, 0.0]
+
+        for i in range(self.dim*self.vn):
+            self.velocity[i] = 0.0
 
         for i in range(self.en):
             self.element[i] = [self.e[4*i], self.e[4*i+1], self.e[4*i+2], self.e[4*i+3]]
@@ -169,7 +170,9 @@ class Object:
 
         for i in range(self.vn):
             self.node[i] = self.initial_node[i]
-            self.velocity[i] = [0.0, 0.0, 0.0]
+            self.velocity[3*i] = 0.0
+            self.velocity[3*i+1] = 0.0
+            self.velocity[3*i+2] = 0.0
 
         for i in range(self.en):
             D = self.compute_D(i)
@@ -230,17 +233,6 @@ class Object:
         J = max(F.determinant(), 0.01)
         return self.mu[None] * (F - F_inv_T) + self.la[None] * ti.log(J) * F_inv_T
 
-    #compute the total energy
-    @ti.kernel
-    def energy(self) -> ti.f32:
-        e = 0.0
-        for i in range(self.en):
-            e += self.element_volume[i] * self.Psi(i)
-        for i in range(self.vn):
-            e += self.node_mass * self.gravity * (self.node[i].y + 2)
-            e += 0.5 * self.node_mass * self.velocity[i].dot(self.velocity[i])
-        return e
-
 
     #compute force for each vertex E_total = E_strain + E_kinetic
     @ti.kernel
@@ -248,31 +240,31 @@ class Object:
 
         #add gravity
         for i in range(self.vn):
-            self.force[i] = ti.Vector([0, -node_mass*gravity, 0])
+            self.force[self.dim*i] = 0
+            self.force[self.dim*i+1] = -node_mass*gravity
+            self.force[self.dim*i+2] = 0
 
         #add elasticity
         for i in range(self.en):
-            #element_force = Wi * PK1 * partial(F)/partial(x)
-            #partial(F)/partial(x) = ej * ei^T * B
-            #PK1 * partial(F)/partial(x) = [Pk1@B^T]_kj 1*1 element
-            #Hkj k-dim j-index
-            H = -self.element_volume[i] * (self.PK1(i) @ self.B[i].transpose())
-
-            #3-dim force 
-            h1 = ti.Vector([H[0, 0], H[1, 0], H[2, 0]])
-            h2 = ti.Vector([H[0, 1], H[1, 1], H[2, 1]])
-            h3 = ti.Vector([H[0, 2], H[1, 2], H[2, 2]])
 
             a = self.element[i][0]
             b = self.element[i][1]
             c = self.element[i][2]
             d = self.element[i][3]
 
-            self.force[a] += h1
-            self.force[b] += h2
-            self.force[c] += h3
-            #inner force should be 0
-            self.force[d] += -(h1 + h2 + h3)
+            #element_force = Wi * PK1 * partial(F)/partial(x) is 3*3 matrix
+            #partial(F)/partial(x) = ej * ei^T * B
+            #PK1 * partial(F)/partial(x) = [Pk1@B^T]_kj 1*1 element
+            #Hkj k-dim j-index 
+            H = -self.element_volume[i] * (self.PK1(i) @ self.B[i].transpose())
+
+            # 3-dim force
+            for j in ti.static(range(self.dim)):
+                self.force[3*a+j] += H[j, 0]
+                self.force[3*b+j] += H[j, 1]
+                self.force[3*c+j] += H[j, 2]
+                #inner force should be 0
+                self.force[3*d+j] += -(H[j, 0] + H[j, 1] + H[j, 2])
 
     # df/dx=dF/dx^T * dP/dF * dF/dx
     @ti.kernel
@@ -363,13 +355,13 @@ class Object:
         # size 3-dim*nodes
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.x[i*self.dim+j] = self.velocity[i][j]
+                self.x[i*self.dim+j] = self.velocity[i*self.dim+j]
 
         # assmeble b matrix
         # size 3-dim*nodes
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.b[i*self.dim+j] = self.velocity[i][j] + self.dt / self.node_mass * self.force[i][j]
+                self.b[i*self.dim+j] = self.velocity[i*self.dim+j] + self.dt / self.node_mass * self.force[i*self.dim+j]
 
 
     #Explicit Euler motion equation
@@ -381,16 +373,20 @@ class Object:
         #compute velocity and position of each point
         for i in range(self.vn):
             # v_n+1 of each point
-            self.velocity[i] = ti.Vector([self.x[i*3+0], self.x[i*3+1], self.x[i*3+2]])
-            self.node[i] += self.velocity[i] * self.dt
+            for j in ti.static(range(self.dim)):
+                self.velocity[3*i+j] = self.x[i*3+j]
+                self.node[i][j] += self.velocity[3*i+j] * self.dt
 
             #boundary conditions
             if self.node[i].y < floor_height:
                 self.node[i].y = floor_height
-                self.velocity[i].y = 0
+                # set y speed 0
+                self.velocity[self.dim*i+1] = 0.0
 
             #ensure force not too large
-            mx = max(mx, self.force[i].norm())
+            #这一步出了问题
+            vn_force = ti.Vector([self.force[3*i],self.force[3*i+1],self.force[3*i+2]])
+            mx = max(mx, vn_force.norm())
 
         mx = max(mx, 1)
 

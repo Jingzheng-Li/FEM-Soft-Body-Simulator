@@ -57,6 +57,7 @@ class Newton_Method:
             #这一步解出了
             self.x = self.x + self.dx
             #判断dx是不是超标
+            #这个norm不用计算 只需要找到最小值就够了
             print(self.dx.norm())
             if self.dx.norm() < tol:
                 break

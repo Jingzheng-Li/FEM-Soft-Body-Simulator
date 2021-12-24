@@ -11,6 +11,7 @@
     <OutputPath>.</OutputPath>
     <Name>FEM Soft Body Simulator</Name>
     <RootNamespace>FEM Soft Body Simulator</RootNamespace>
+    <TestFramework>Pytest</TestFramework>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
