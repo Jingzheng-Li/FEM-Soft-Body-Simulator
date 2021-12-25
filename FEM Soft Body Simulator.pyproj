@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>30cab741-c307-4ef7-ad09-965447e5d6f8</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>FEM Softy Body Simulator\test_new_implicit.py</StartupFile>
+    <StartupFile>Numerical Method\Newton_Method.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -22,6 +22,9 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Elasticity Object\Elasticity_Object.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="FEM Softy Body Simulator\AutoDiff_Explicit_Soft_Body_Simulator.py" />
     <Compile Include="FEM Softy Body Simulator\Explicit_FEM_Soft_Body_Simulator.py" />
     <Compile Include="FEM Softy Body Simulator\Implicit_FEM_Soft_Body_Simulator.py" />
@@ -34,6 +37,7 @@
   <ItemGroup>
     <Folder Include="Explanation\" />
     <Folder Include="FEM Softy Body Simulator\" />
+    <Folder Include="Elasticity Object\" />
     <Folder Include="Numerical Method\" />
     <Folder Include="tetrahedral-models\" />
   </ItemGroup>

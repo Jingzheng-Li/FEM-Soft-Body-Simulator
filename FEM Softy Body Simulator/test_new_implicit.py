@@ -4,6 +4,8 @@
 #improve semi-implicit to implicit
 #add damping 
 # 现在在semi implicit的基础上使用Newton method来解方程
+# 把time integrate 单独拿出来 这里的一项仅作为模型 再写一个py专门用来做渲染
+# 然后就可以在newtonmethod里面调用object 并且计算实时调用函数了
 
 
 import taichi as ti #version 0.8.7
@@ -374,7 +376,7 @@ class Object:
         for i in range(self.vn):
             # v_n+1 of each point
             for j in ti.static(range(self.dim)):
-                self.velocity[3*i+j] = self.x[i*3+j]
+                self.velocity[i*3+j] = self.x[i*3+j]
                 self.node[i][j] += self.velocity[3*i+j] * self.dt
 
             #boundary conditions
@@ -513,7 +515,8 @@ while window.running:
         obj.compute_force(obj.node_mass, obj.gravity)
         obj.compute_force_gradient()
         obj.assembly()
-        # choose linear equation solver
+        # choose linear equation solver 
+        # 这个设计真的是牵一发动全身 这个地方如何要把Jacobi CG改成func就不能用了
         if curr_equation_solver == 0:
             equationsolver.Jacobi(100, 1e-5)
         elif curr_equation_solver == 1:

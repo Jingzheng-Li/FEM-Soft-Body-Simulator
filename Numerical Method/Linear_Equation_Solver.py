@@ -20,7 +20,7 @@ class Linear_Equation_Solver:
         self.q = ti.field(dtype=ti.f32, shape=self.matrixsize)
 
     # Jacobi iteration
-    @ti.kernel
+    @ti.func
     def Jacobi(self, max_iter_num:ti.i32, tol:ti.f32):
         n = self.matrixsize
         iter_i = 0
@@ -51,7 +51,7 @@ class Linear_Equation_Solver:
         # print("Jacobi iteration:", iter_i, res)
 
 
-    @ti.kernel
+    @ti.func
     def CG(self, max_iter_num:ti.i32, tol:ti.f32): # conjugate gradient
         
         n = self.matrixsize

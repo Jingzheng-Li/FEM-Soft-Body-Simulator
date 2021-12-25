@@ -1,3 +1,4 @@
+
                                         
 #Problem1: rendering failure: count inside face, if open only ambient color, then everything will be fine, need to cull inside faces
 #Use sparse data structure to improve
@@ -6,6 +7,7 @@
 # 现在在semi implicit的基础上使用Newton method来解方程
 # 把time integrate 单独拿出来 这里的一项仅作为模型 再写一个py专门用来做渲染
 # 然后就可以在newtonmethod里面调用object 并且计算实时调用函数了
+
 
 
 import taichi as ti #version 0.8.7
