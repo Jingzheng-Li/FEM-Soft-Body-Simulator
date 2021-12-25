@@ -22,22 +22,20 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Elasticity Object\Elasticity_Object.py">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="FEM Softy Body Simulator\AutoDiff_Explicit_Soft_Body_Simulator.py" />
-    <Compile Include="FEM Softy Body Simulator\Explicit_FEM_Soft_Body_Simulator.py" />
-    <Compile Include="FEM Softy Body Simulator\Implicit_FEM_Soft_Body_Simulator.py" />
-    <Compile Include="FEM Softy Body Simulator\Semi_Implicit_FEM_Soft_Body_Simulator.py" />
-    <Compile Include="FEM Softy Body Simulator\test_new_implicit.py" />
-    <Compile Include="FEM Softy Body Simulator\test_taichi_example.py" />
+    <Compile Include="FEM Soft Body\Explicit_FEM_Soft_Body.py" />
+    <Compile Include="FEM Soft Body\Implicit_FEM_Soft_Body.py" />
+    <Compile Include="FEM Soft Body\Semi_Implicit_FEM_Soft_Body.py" />
+    <Compile Include="FEM Soft Body\test_new_simulator.py" />
+    <Compile Include="test_taichi_example.py" />
     <Compile Include="Numerical Method\Linear_Equation_Solver.py" />
     <Compile Include="Numerical Method\Newton_Method.py" />
+    <Compile Include="Soft_Body_Simulator.py">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Explanation\" />
-    <Folder Include="FEM Softy Body Simulator\" />
-    <Folder Include="Elasticity Object\" />
+    <Folder Include="FEM Soft Body\" />
     <Folder Include="Numerical Method\" />
     <Folder Include="tetrahedral-models\" />
   </ItemGroup>

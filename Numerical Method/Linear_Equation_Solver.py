@@ -2,13 +2,11 @@
 import taichi as ti
 import time
 
-ti.init(arch=ti.gpu)
-
 
 @ti.data_oriented
 class Linear_Equation_Solver:
 
-    def __init__(self, A:ti.template(), x:ti.template(), b:ti.template()):
+    def __init__(self, A:ti.template(), b:ti.template(), x:ti.template()):
         self.A = A
         self.x = x
         self.b = b

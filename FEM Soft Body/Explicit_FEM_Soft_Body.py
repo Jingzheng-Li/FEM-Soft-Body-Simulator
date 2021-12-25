@@ -1,10 +1,12 @@
                                         
 #Problem1: rendering failure: count inside face, if open only ambient color, then everything will be fine, need to cull inside faces
 
+#explicit 最后在弄吧 因为还需要把time integrate拿出来 有点麻烦
+
 
 import taichi as ti #version 0.8.7
 import taichi_glsl as ts
-import math
+
 
 ti.init(arch=ti.gpu)
 
@@ -50,7 +52,7 @@ class Floor:
 
 
 @ti.data_oriented
-class Object:
+class Explicit_Object:
 
     def __init__(self, filename, index_start=1):
 
@@ -258,7 +260,7 @@ initialize_coordsys()
 
 
 floor = Floor(0, 1)
-obj = Object('tetrahedral-models/ellell.1', 0)
+obj = Explicit_Object('tetrahedral-models/ellell.1', 0)
 
 #object parameters
 obj.node_mass = 1.0
