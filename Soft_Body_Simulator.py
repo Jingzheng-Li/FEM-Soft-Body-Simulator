@@ -1,8 +1,3 @@
-# 把explicit semi-implicit 和 implicit全部都移动到这里来
-# 这里只保留主题部分 比如 time-integrate render
-# 然后找到共同点 使用imgui可以自由切换
-# 其中最重要的一点是不要把numerical method的接口暴露在外面
-# 等下也可以把floor放到这边来 那边只保存object
 
 
 import taichi as ti #version 0.8.7
@@ -11,7 +6,6 @@ import taichi_glsl as ts
 import sys
 sys.path.append('FEM Soft Body')
 from Semi_Implicit_FEM_Soft_Body import *
-from Implicit_FEM_Soft_Body import *
 
 ti.init(arch=ti.gpu)
 
@@ -54,6 +48,7 @@ class Floor:
                 self.indices[square_id * 6 + 3] = (i + 1) * N + j
                 self.indices[square_id * 6 + 4] = (i + 1) * N + j + 1
                 self.indices[square_id * 6 + 5] = i * N + j
+                
 
 @ti.data_oriented
 class Soft_Body_Simulator:
@@ -83,6 +78,7 @@ class Soft_Body_Simulator:
 floor = Floor(0, 1)
 #首先这里可以采用if else分别设置obj等于什么 我这里还有有点没有想明白 我为什么要在外面封装Newton来着
 obj = Semi_Implicit_Object('tetrahedral-models/ellell.1', 0)
+#obj = Implicit_Object('tetrahedral-models/ellell.1', 0)
 simulator = Soft_Body_Simulator()
 
 
@@ -97,9 +93,22 @@ floor.initialize()
 simulator.initialize_coordsys()
 
 
-# Euler motion equation
-# 这一块删删改改之后还剩下什么？velocity node position 把这些都提出来就好
-# 不行 我还是要把time_integrate 封装起来 可以分别取名为implicit_time_integrate 
+
+@ti.pyfunc
+def field_norm(x:ti.template()):
+    result = 0.0
+    for i in range(x.shape[0]):
+        result += x[i]**2
+    return result
+
+@ti.pyfunc
+def matrix_field_norm(x:ti.template()):
+    result = 0.0
+    for i,j in ti.ndrange(x.shape[0],x.shape[0]):
+        result += x[i,j]**2
+    return result
+
+
 @ti.kernel
 def semi_implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
 
@@ -110,16 +119,18 @@ def semi_implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
 
     #compute velocity and position of each point
     for i in range(obj.vn):
-        # v_n+1 of each point
         for j in ti.static(range(obj.dim)):
-            obj.velocity[i*3+j] = obj.x[i*3+j]
-            obj.node[i][j] += obj.velocity[3*i+j] * obj.dt
+            obj.velocity[i*obj.dim+j] = obj.x[i*obj.dim+j] / obj.dt
+            obj.node[i][j] += obj.x[i*obj.dim+j]
 
         #boundary conditions
         if obj.node[i].y < floor_height:
             obj.node[i].y = floor_height
             # set y speed 0
             obj.velocity[obj.dim*i+1] = 0.0
+
+    #计算velocity的norm
+    #print(field_norm(obj.vn*obj.dim, obj.velocity))
 
     # object position projection
     for i in range(obj.vn):
@@ -221,13 +232,13 @@ while window.running:
         obj.compute_force(obj.node_mass, obj.gravity)
         obj.compute_force_gradient()
         obj.assembly()
-        #obj.time_integrate(floor.height)
-        semi_implicit_time_integrate(floor.height,0.2)
+        semi_implicit_time_integrate(floor.height, 0.2)
 
     render()
     imgui_options()
 
     window.show()
+
 
 
 

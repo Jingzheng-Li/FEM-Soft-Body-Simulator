@@ -1,14 +1,4 @@
-                                        
-#Problem1: rendering failure: count inside face, if open only ambient color, then everything will be fine, need to cull inside faces
-#Use sparse data structure to improve
-#improve semi-implicit to implicit
-#add damping 
-# 现在在semi implicit的基础上使用Newton method来解方程
-# 把time integrate 单独拿出来 这里的一项仅作为模型 再写一个py专门用来做渲染
-# 然后就可以在newtonmethod里面调用object 并且计算实时调用函数了
-# 然后下一步是把time integrate从里面拿出来专门写成kernel
-# 因为如何想把NewtonMethod封装就必须要把object里面的compute_force和compute_gradient_force单独取出来
-# ti.init也不需要这么多 谁运行 谁就写一个ti.init就可以了
+
 
 
 import taichi as ti #version 0.8.7
@@ -59,7 +49,9 @@ class Implicit_Object:
 
         #simulation data
         self.node = ti.Vector.field(self.dim, dtype=ti.f32, shape=self.vn)
+        #用来做restart的initial用的 不能动
         self.initial_node = ti.Vector.field(self.dim, dtype=ti.f32, shape=self.vn)
+
         self.face = ti.Vector.field(3, dtype=ti.i32, shape=self.fn)
         self.element = ti.Vector.field(4, dtype=ti.i32, shape=self.en)
         #rendering data
@@ -76,6 +68,7 @@ class Implicit_Object:
         self.mu = ti.field(dtype=ti.f32, shape=())
         self.la = ti.field(dtype=ti.f32, shape=())
         self.color = (0.99,0.75,0.89)
+        self.linesearch = 0.5
 
         self.velocity = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
         self.force = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
@@ -97,12 +90,15 @@ class Implicit_Object:
         self.force_gradient = ti.field(dtype=ti.f32, shape=(self.dim*self.vn, self.dim*self.vn))
 
 
-        # for solving system of linear equations
-        self.A = ti.field(dtype=ti.f32, shape=(self.dim*self.vn, self.dim*self.vn))
-        self.b = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
-        self.x = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
-        self.equationsolver = Linear_Equation_Solver(self.A, self.b, self.x)
-        
+        # for solving system of Newton iterations
+        self.F_Jac = ti.field(dtype=ti.f32, shape=(self.dim*self.vn, self.dim*self.vn))
+        self.F_num = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
+        self.x = ti.field(dtype=ti.f32, shape=self.dim*self.vn) #x是x_n+1
+        self.dx = ti.field(dtype=ti.f32, shape=self.dim*self.vn) # dx是x-x_n
+        self.equationsolver = Linear_Equation_Solver(self.F_Jac, self.F_num, self.dx)
+        #用来记录NewtonMethod每次迭代当前node的 知道求出真正的velocity之后才能更新
+        self.current_node = ti.Vector.field(self.dim, dtype=ti.f32, shape=self.vn)
+        self.current_velocity = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
 
         print("vertices: ", self.vn, "elements: ", self.en)
 
@@ -195,7 +191,7 @@ class Implicit_Object:
 
 
     #compute force for each vertex E_total = E_strain + E_kinetic
-    @ti.kernel
+    @ti.func
     def compute_force(self, node_mass:float, gravity:float):
 
         #add gravity
@@ -227,11 +223,12 @@ class Implicit_Object:
                 self.force[3*d+j] += -(H[j, 0] + H[j, 1] + H[j, 2])
 
     # df/dx=dF/dx^T * dP/dF * dF/dx
-    @ti.kernel
+    @ti.func
     def compute_force_gradient(self):
 
-        for i, j in self.force_gradient:
-            self.force_gradient[i, j] = 0
+        #竟然是这句代码报的错误 我觉得最不可能出错的代码 真是奇怪
+        for i, j in ti.ndrange(self.dim*self.vn, self.dim*self.vn):
+            self.force_gradient[i, j] = 0.0
 
         # initialize dF/dx_ij = dD/dx*B for each 
         # notice that dF/dx_ij not equal dF/dF_ij
@@ -296,58 +293,84 @@ class Implicit_Object:
                     self.force_gradient[self.element[e][3]*3+1, ind] += -(self.dH[e, n, i][1, 0] + self.dH[e, n, i][1, 1] + self.dH[e, n, i][1, 2])
                     self.force_gradient[self.element[e][3]*3+2, ind] += -(self.dH[e, n, i][2, 0] + self.dH[e, n, i][2, 1] + self.dH[e, n, i][2, 2])
 
-    # (I-h2*M^-1*gradient(f(xn)) * v_n+1 = vn+h*M^-1*f(xn)
-    @ti.kernel
+    @ti.func
     def assembly(self):
 
-        # initialize A as big identity matrix A = (I - whatever)
-        # size 3-dim*nodes * 3-dim*nodes
-        for i, j in self.A:
-            self.A[i, j] = 1 if i == j else 0
+        # 一夜回到解放前了 为什么原来能对 现在反而错了呢
+        # 到底是哪里错了？
 
-        #assemble A matrix
-        for i, j in self.A:
-            self.A[i,j] -= self.dt**2 / self.node_mass * self.force_gradient[i, j]
+        for i,j in ti.ndrange(self.vn, self.dim):
+            self.F_Jac[i, j] = 1.0 if i == j else 0.0
 
+        for i,j in ti.ndrange(self.vn, self.dim):
+            self.F_Jac[i,j] -= self.dt**2 * self.force_gradient[i, j]
 
-        # assemble x matrix as initial value for iteration
-        # since most time v_n and v_n+1 are similar, can use v_n as initial value
-        # size 3-dim*nodes
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.x[i*self.dim+j] = self.velocity[i*self.dim+j]
+                self.F_num[self.dim*i+j] = self.dt * self.velocity[i*self.dim+j] + self.dt**2 / self.node_mass * self.force[i*self.dim+j]
 
-        # assmeble b matrix
-        # size 3-dim*nodes
-        for i in range(self.vn):
-            for j in ti.static(range(self.dim)):
-                self.b[i*self.dim+j] = self.velocity[i*self.dim+j] + self.dt / self.node_mass * self.force[i*self.dim+j]
+    @ti.func
+    def field_norm(self, x:ti.template()):
+        result = 0.0
+        for i in range(x.shape[0]):
+            result += x[i]**2
+        return result
 
-    # Euler motion equation
-    # 这一块删删改改之后还剩下什么？velocity node position 把这些都提出来就好
-    # 不行 我还是要把time_integrate 封装起来 可以分别取名为implicit_time_integrate 
+    @ti.func
+    def matrix_field_norm(self, x:ti.template()):
+        result = 0.0
+        for i,j in ti.ndrange(x.shape[0],x.shape[0]):
+            result += x[i,j]
+        return result
+
+    @ti.func
+    def fixed_Hessian(self):
+        pass
+
+
+    #感觉很不可思议 为什么只迭代一次就能够收敛？
+    #只迭代一次就能够得到解肯定是错误的 关键是为什么一次就能够为0？
     @ti.kernel
-    def implicit_time_integrate(self, floor_height:ti.f32, modelscale:ti.f32):
+    def Newton_Method(self, max_iter_num:ti.i32, tol:ti.f32):
 
-        if curr_equation_solver == 0:
-            self.equationsolver.Jacobi(100, 1e-5)
-        elif curr_equation_solver == 1:
-            self.equationsolver.CG(self.vn*self.dim*3, 1e-5)
+        print("Newton Method")
+        iter_i = 0
 
-        #compute velocity and position of each point
+        #给dx=x-x_n一个初值 这里dx取的是真解的负值
         for i in range(self.vn):
-            # v_n+1 of each point
             for j in ti.static(range(self.dim)):
-                self.velocity[i*3+j] = self.x[i*3+j]
-                self.node[i][j] += self.velocity[3*i+j] * self.dt
+                self.x[i*self.dim+j] = self.node[i][j] + self.dt * self.velocity[self.dim*i+j]
+                self.dx[i*self.dim+j] = self.dt * self.velocity[i*self.dim+j]
 
-            #boundary conditions
-            if self.node[i].y < floor_height:
-                self.node[i].y = floor_height
-                # set y speed 0
-                self.velocity[self.dim*i+1] = 0.0
+        while iter_i < max_iter_num:
+            
+            self.compute_force(self.node_mass, self.gravity)
+            self.compute_force_gradient()
 
-        # object position projection
-        for i in range(self.vn):
-            self.position[i] = modelscale * self.node[i]
+            #这两个还是没问题 是不是还是assembly的错误
+            self.assembly()
+            
+            self.equationsolver.Jacobi(100, 1e-5)
+            #self.equationsolver.CG(100, 1e-5)
+
+            for i in range(self.vn):
+                for j in ti.static(range(self.dim)):
+                    self.x[i*self.dim+j] -= self.dx[i*self.dim+j]
+
+            norm_F_num = self.field_norm(self.F_num)
+            norm_dx = self.field_norm(self.dx)
+            print(iter_i, norm_F_num, norm_dx)
+
+            
+            if norm_F_num < tol or norm_dx < tol:
+                break
+             
+            #for i in range(self.vn):
+            #    for j in ti.static(range(self.dim)):
+            #        self.node[i][j] = self.x[i*self.dim+j]
+
+            
+            iter_i += 1
+            #print(iter_i)
+
 

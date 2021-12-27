@@ -1,12 +1,16 @@
-#开始写implicit部分 这里随便修改把
+# 可以了 在test_new_simulator和test_new_implicit上面大胆更新吧
+# 先不用考虑代码维护的事情了
+# 这完全不应该这样 写了三天的Newton了 到现在都没有写好
+# 果然 最后还是错在了运动学方程上
+# 把运动学方程转换成xn的吧
 
 
 import taichi as ti #version 0.8.7
 import taichi_glsl as ts
 
-
-from Semi_Implicit_FEM_Soft_Body import *
-from Implicit_FEM_Soft_Body import *
+import sys
+sys.path.append('FEM Soft Body')
+from test_new_implicit import *
 
 ti.init(arch=ti.gpu)
 
@@ -70,14 +74,8 @@ class Soft_Body_Simulator:
         for k in range(self.zi):
             self.position_xyz[self.xi+self.yi+k]=ti.Vector([0,0,k/self.zi])
 
-
-
-
-
-
 floor = Floor(0, 1)
-#首先这里可以采用if else分别设置obj等于什么 我这里还有有点没有想明白 我为什么要在外面封装Newton来着
-obj = Semi_Implicit_Object('tetrahedral-models/ellell.1', 0)
+obj = Implicit_Object('tetrahedral-models/ellell.1', 0)
 simulator = Soft_Body_Simulator()
 
 
@@ -87,33 +85,25 @@ obj.gravity = 10.0
 obj.nu = 0.3
 obj.E = 10000
 obj.dt = 1e-3
+obj.linesearch = 0.5
 obj.initialize()
 floor.initialize()
 simulator.initialize_coordsys()
 
 
-# Euler motion equation
-# 这一块删删改改之后还剩下什么？velocity node position 把这些都提出来就好
-# 不行 我还是要把time_integrate 封装起来 可以分别取名为implicit_time_integrate 
 @ti.kernel
-def semi_implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
-
-    if curr_equation_solver == 0:
-        obj.equationsolver.Jacobi(100, 1e-5)
-    elif curr_equation_solver == 1:
-        obj.equationsolver.CG(obj.vn*obj.dim*3, 1e-5)
+#这里带着NewtonMethod求出来的正确velocity进入迭代计算真正的下一步node的位置
+def implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
 
     #compute velocity and position of each point
     for i in range(obj.vn):
-        # v_n+1 of each point
         for j in ti.static(range(obj.dim)):
-            obj.velocity[i*3+j] = obj.x[i*3+j]
-            obj.node[i][j] += obj.velocity[3*i+j] * obj.dt
+            obj.velocity[i*obj.dim+j] = (obj.x[i*obj.dim+j] - obj.node[i][j]) / obj.dt
+            obj.node[i][j] = obj.x[i*obj.dim+j]
 
         #boundary conditions
         if obj.node[i].y < floor_height:
             obj.node[i].y = floor_height
-            # set y speed 0
             obj.velocity[obj.dim*i+1] = 0.0
 
     # object position projection
@@ -212,17 +202,17 @@ while window.running:
     obj.mu[None] = obj.E / (2 * (1 + obj.nu))
     obj.la[None] = obj.E * obj.nu / ((1 + obj.nu) * (1 - 2 * obj.nu))
 
+    #这个range只表示一帧运算几次 只会影响速度 不会影响精度
     for i in range(10):
-        obj.compute_force(obj.node_mass, obj.gravity)
-        obj.compute_force_gradient()
-        obj.assembly()
-        #obj.time_integrate(floor.height)
-        semi_implicit_time_integrate(floor.height,0.2)
+        
+        #应该有Newton输出一个正确的velocity 然后交由下面的time_integrate完成计算
+        obj.Newton_Method(100, 1e-5)
+        #implicit_time_integrate(floor.height, 0.2)
 
-    render()
-    imgui_options()
+    #render()
+    #imgui_options()
 
-    window.show()
+    #window.show()
 
 
 

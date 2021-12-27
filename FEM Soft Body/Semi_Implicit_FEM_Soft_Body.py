@@ -3,12 +3,6 @@
 #Use sparse data structure to improve
 #improve semi-implicit to implicit
 #add damping 
-# 现在在semi implicit的基础上使用Newton method来解方程
-# 把time integrate 单独拿出来 这里的一项仅作为模型 再写一个py专门用来做渲染
-# 然后就可以在newtonmethod里面调用object 并且计算实时调用函数了
-# 然后下一步是把time integrate从里面拿出来专门写成kernel
-# 因为如何想把NewtonMethod封装就必须要把object里面的compute_force和compute_gradient_force单独取出来
-# ti.init也不需要这么多 谁运行 谁就写一个ti.init就可以了
 
 
 import taichi as ti #version 0.8.7
@@ -230,8 +224,9 @@ class Semi_Implicit_Object:
     @ti.kernel
     def compute_force_gradient(self):
 
-        for i, j in self.force_gradient:
-            self.force_gradient[i, j] = 0
+        #竟然是这句代码报的错误 我觉得最不可能出错的代码 真是奇怪
+        for i, j in ti.ndrange(self.dim*self.vn, self.dim*self.vn):
+            self.force_gradient[i, j] = 0.0
 
         # initialize dF/dx_ij = dD/dx*B for each 
         # notice that dF/dx_ij not equal dF/dF_ij
@@ -303,7 +298,7 @@ class Semi_Implicit_Object:
         # initialize A as big identity matrix A = (I - whatever)
         # size 3-dim*nodes * 3-dim*nodes
         for i, j in self.A:
-            self.A[i, j] = 1 if i == j else 0
+            self.A[i, j] = 1.0 if i == j else 0.0
 
         #assemble A matrix
         for i, j in self.A:
@@ -315,11 +310,12 @@ class Semi_Implicit_Object:
         # size 3-dim*nodes
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.x[i*self.dim+j] = self.velocity[i*self.dim+j]
+                self.x[i*self.dim+j] = self.dt * self.velocity[i*self.dim+j]
 
         # assmeble b matrix
         # size 3-dim*nodes
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.b[i*self.dim+j] = self.velocity[i*self.dim+j] + self.dt / self.node_mass * self.force[i*self.dim+j]
+                self.b[i*self.dim+j] = self.dt * self.velocity[i*self.dim+j] + self.dt**2 / self.node_mass * self.force[i*self.dim+j]
+
 

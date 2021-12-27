@@ -1,31 +1,24 @@
 
-#我觉得我应该在开一个分支提交代码 能够保证修改
 
 import taichi as ti
 
 from Linear_Equation_Solver import *
 
-
-import sys
-sys.path.append('FEM Soft Body')
-from Implicit_FEM_Soft_Body import *
-
 ti.init(arch=ti.gpu)
+
 
 @ti.data_oriented
 class Newton_Method:
 
-    def __init__(self):
+    def __init__(self, x: ti.template(), F:ti.template(), F_Jac:ti.template()):
 
-        self.impobj = Implicit_Object('tetrahedral-models/ellell.1', 0)
-        # 把vn作为初值带入
-        self.x = self.impobj.velocity
-        self.F_num = self.impobj.F_num
-        self.F_Jac = self.impobj.F_Jac
+        self.x = x
+        self.F = F
+        self.F_Jac = F_Jac
         self.matrixsize = self.x.shape[0]
         self.dx = ti.field(dtype=ti.f32,shape=self.matrixsize)
-        self.equationsolver = Linear_Equation_Solver(self.F_Jac, self.F_num, self.dx) 
-        
+        self.equationsolver = Linear_Equation_Solver(self.F_Jac, self.F, self.dx)       
+
 
     @ti.func
     def field_norm(self, x:ti.template()):
@@ -42,17 +35,11 @@ class Newton_Method:
             #这一步是正常的没有问题
             #更新F_Jac和F
             TestFunction(self.F, self.x)
-            TestFunctionJac(self.F_Jac, self.x)
-
-            #如果这里要写成implicit的话 大概应该是
-            #compute_force()
-            #compute_force_gradient()
-            #assembly() 把F和F_Jac全都弄出来
-
+            TestFunctionJac(self.F_Jac, self.x)       
             
             #这一步输入A=F_Jac dx=xn-xn+1 b=F
             #更新dx
-            self.equationsolver.Jacobi(100,1e-5)
+            self.equationsolver.Jacobi(100,1e-6)
             #self.equationsolver.CG(100,1e-5)
 
             #原方程是-A(dx)=b 现在解出来的是A(dx)=b 解是负数 这里dx=xn-xn+1
@@ -67,6 +54,7 @@ class Newton_Method:
 
             iter_i += 1
             print(iter_i)
+            print(self.x[0], self.x[1], self.x[2])
 
     @ti.kernel
     def damped_Newton(self):
@@ -74,29 +62,46 @@ class Newton_Method:
         pass
 
 
-# 好 直接带值进去现在是正常的了
-newton_method = Newton_Method()
-#newton_method.ordinary_Newton(100, 1e-5)
 
 
 
+@ti.func
+def TestFunction(F:ti.template(), x:ti.template()):
+    F[0] = 3*x[0]-ti.cos(x[1]*x[2])-0.5
+    F[1] = x[0]**2 - 81*(x[1]+0.1)**2+ti.sin(x[2])+1.06
+    F[2] = ti.exp(-x[0]*x[1])+20*x[2]+(10*3.1415926-3)/3
+    return F
+
+@ti.func
+def TestFunctionJac(F_Jac:ti.template(), x:ti.template()):
+    F_Jac[0,0] = 3
+    F_Jac[0,1] = x[2]*ti.sin(x[1]*x[2])
+    F_Jac[0,2] = x[1]*ti.sin(x[1]*x[2])
+    F_Jac[1,0] = 2*x[0]
+    F_Jac[1,1] = -162*(x[1]+0.1)
+    F_Jac[1,2] = ti.cos(x[2])
+    F_Jac[2,0] = -x[1]*ti.exp(-x[0]*x[1])
+    F_Jac[2,1] = -x[0]*ti.exp(-x[0]*x[1])
+    F_Jac[2,2] = 20
+    return F_Jac
 
 
 
+x = ti.field(dtype=ti.f32, shape=3)
+F = ti.field(dtype=ti.f32, shape=3)
+F_Jac = ti.field(dtype=ti.f32, shape=(3,3))
 
 
+@ti.kernel
+def initialize():
+    for i in range(3):
+        x[i] = 1.1
+        F[i] = 0.1
+        for j in range(3):
+            F_Jac[i,j] = 0.1
 
 
+newton_method = Newton_Method(x,F,F_Jac)
+initialize()
+newton_method.ordinary_Newton(100, 1e-6)
 
-
-
-
-
-
-
-
-
-
-
-#newton_method = Newton_Method()
-#newton_method.damped_Newton()

@@ -18,6 +18,7 @@ class Linear_Equation_Solver:
         self.q = ti.field(dtype=ti.f32, shape=self.matrixsize)
 
     # Jacobi iteration
+    # 这个先改成pyfunc既能在python 又能在taichi里面走
     @ti.func
     def Jacobi(self, max_iter_num:ti.i32, tol:ti.f32):
         n = self.matrixsize
@@ -46,7 +47,7 @@ class Linear_Equation_Solver:
                 break
 
             iter_i += 1
-        # print("Jacobi iteration:", iter_i, res)
+        #print("Jacobi iteration:", iter_i, res)
 
 
     @ti.func
