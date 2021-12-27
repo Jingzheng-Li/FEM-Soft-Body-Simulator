@@ -296,18 +296,24 @@ class Implicit_Object:
     @ti.func
     def assembly(self):
 
-        # 一夜回到解放前了 为什么原来能对 现在反而错了呢
-        # 到底是哪里错了？
+        for i,j in ti.ndrange(self.vn*self.dim, self.vn*self.dim):
+            self.F_Jac[i,j] = 1.0 if i == j else 0.0
 
-        for i,j in ti.ndrange(self.vn, self.dim):
-            self.F_Jac[i, j] = 1.0 if i == j else 0.0
+        #assemble F_Jac matrix M - h^2*force_gradient
+        for i,j in ti.ndrange(self.vn*self.dim, self.vn*self.dim):
+            self.F_Jac[i,j] -= self.dt**2 / self.node_mass * self.force_gradient[i, j]
 
-        for i,j in ti.ndrange(self.vn, self.dim):
-            self.F_Jac[i,j] -= self.dt**2 * self.force_gradient[i, j]
+        # assmeble F_num matrix M(x-(xn+h*vn)) - h^2*force
+        for i in range(self.vn):
+            for j in ti.static(range(self.dim)):
+                self.F_num[i*self.dim+j] = (self.dt * self.velocity[i*self.dim+j] + self.dt**2 / self.node_mass * self.force[i*self.dim+j])
 
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.F_num[self.dim*i+j] = self.dt * self.velocity[i*self.dim+j] + self.dt**2 / self.node_mass * self.force[i*self.dim+j]
+                self.F_num[i*self.dim+j] += (-self.x[i*self.dim+j] + self.node[i][j])
+
+
+
 
     @ti.func
     def field_norm(self, x:ti.template()):
@@ -328,26 +334,22 @@ class Implicit_Object:
         pass
 
 
-    #感觉很不可思议 为什么只迭代一次就能够收敛？
-    #只迭代一次就能够得到解肯定是错误的 关键是为什么一次就能够为0？
     @ti.kernel
     def Newton_Method(self, max_iter_num:ti.i32, tol:ti.f32):
 
-        print("Newton Method")
+        #print("Newton Method")
         iter_i = 0
 
         #给dx=x-x_n一个初值 这里dx取的是真解的负值
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.x[i*self.dim+j] = self.node[i][j] + self.dt * self.velocity[self.dim*i+j]
+                self.x[i*self.dim+j] = self.node[i][j]
                 self.dx[i*self.dim+j] = self.dt * self.velocity[i*self.dim+j]
 
         while iter_i < max_iter_num:
             
             self.compute_force(self.node_mass, self.gravity)
             self.compute_force_gradient()
-
-            #这两个还是没问题 是不是还是assembly的错误
             self.assembly()
             
             self.equationsolver.Jacobi(100, 1e-5)
@@ -355,22 +357,19 @@ class Implicit_Object:
 
             for i in range(self.vn):
                 for j in ti.static(range(self.dim)):
-                    self.x[i*self.dim+j] -= self.dx[i*self.dim+j]
+                    self.x[i*self.dim+j] += self.dx[i*self.dim+j]
 
             norm_F_num = self.field_norm(self.F_num)
             norm_dx = self.field_norm(self.dx)
-            print(iter_i, norm_F_num, norm_dx)
+            #print(iter_i, norm_F_num, norm_dx)
 
             
-            if norm_F_num < tol or norm_dx < tol:
+            if norm_F_num < tol and norm_dx < tol:
                 break
              
+            #到底要不要更新这个节点？
             #for i in range(self.vn):
             #    for j in ti.static(range(self.dim)):
             #        self.node[i][j] = self.x[i*self.dim+j]
-
             
             iter_i += 1
-            #print(iter_i)
-
-

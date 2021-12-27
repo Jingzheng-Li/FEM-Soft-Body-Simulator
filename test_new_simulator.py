@@ -206,13 +206,13 @@ while window.running:
     for i in range(10):
         
         #应该有Newton输出一个正确的velocity 然后交由下面的time_integrate完成计算
-        obj.Newton_Method(100, 1e-5)
-        #implicit_time_integrate(floor.height, 0.2)
+        obj.Newton_Method(100, 1e-7)
+        implicit_time_integrate(floor.height, 0.2)
 
-    #render()
-    #imgui_options()
+    render()
+    imgui_options()
 
-    #window.show()
+    window.show()
 
 
 
