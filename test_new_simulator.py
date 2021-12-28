@@ -98,8 +98,8 @@ def implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
     #compute velocity and position of each point
     for i in range(obj.vn):
         for j in ti.static(range(obj.dim)):
-            obj.velocity[i*obj.dim+j] = (obj.x[i*obj.dim+j] - obj.node[i][j]) / obj.dt
-            obj.node[i][j] = obj.x[i*obj.dim+j]
+            #在Newton里面更新过node了 这里只需要更新velocity就可以了
+            obj.velocity[i*obj.dim+j] = (obj.node[i][j] - obj.previous_node[i][j]) / obj.dt
 
         #boundary conditions
         if obj.node[i].y < floor_height:
@@ -205,8 +205,7 @@ while window.running:
     #这个range只表示一帧运算几次 只会影响速度 不会影响精度
     for i in range(10):
         
-        #应该有Newton输出一个正确的velocity 然后交由下面的time_integrate完成计算
-        obj.Newton_Method(100, 1e-7)
+        obj.Newton_Method(100, 1e-6)
         implicit_time_integrate(floor.height, 0.2)
 
     render()

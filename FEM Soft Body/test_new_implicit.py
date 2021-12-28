@@ -93,12 +93,11 @@ class Implicit_Object:
         # for solving system of Newton iterations
         self.F_Jac = ti.field(dtype=ti.f32, shape=(self.dim*self.vn, self.dim*self.vn))
         self.F_num = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
-        self.x = ti.field(dtype=ti.f32, shape=self.dim*self.vn) #x是x_n+1
         self.dx = ti.field(dtype=ti.f32, shape=self.dim*self.vn) # dx是x-x_n
         self.equationsolver = Linear_Equation_Solver(self.F_Jac, self.F_num, self.dx)
         #用来记录NewtonMethod每次迭代当前node的 知道求出真正的velocity之后才能更新
-        self.current_node = ti.Vector.field(self.dim, dtype=ti.f32, shape=self.vn)
-        self.current_velocity = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
+        self.previous_node = ti.Vector.field(self.dim, dtype=ti.f32, shape=self.vn)
+        self.previous_velocity = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
 
         print("vertices: ", self.vn, "elements: ", self.en)
 
@@ -296,23 +295,21 @@ class Implicit_Object:
     @ti.func
     def assembly(self):
 
+        #assemble F_Jac matrix M - h^2*force_gradient
         for i,j in ti.ndrange(self.vn*self.dim, self.vn*self.dim):
             self.F_Jac[i,j] = 1.0 if i == j else 0.0
-
-        #assemble F_Jac matrix M - h^2*force_gradient
+        
         for i,j in ti.ndrange(self.vn*self.dim, self.vn*self.dim):
             self.F_Jac[i,j] -= self.dt**2 / self.node_mass * self.force_gradient[i, j]
 
         # assmeble F_num matrix M(x-(xn+h*vn)) - h^2*force
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.F_num[i*self.dim+j] = (self.dt * self.velocity[i*self.dim+j] + self.dt**2 / self.node_mass * self.force[i*self.dim+j])
+                self.F_num[i*self.dim+j] = (self.dt * self.previous_velocity[i*self.dim+j] + self.dt**2 / self.node_mass * self.force[i*self.dim+j])
 
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.F_num[i*self.dim+j] += (-self.x[i*self.dim+j] + self.node[i][j])
-
-
+                self.F_num[i*self.dim+j] += (-self.node[i][j] + self.previous_node[i][j])
 
 
     @ti.func
@@ -333,17 +330,21 @@ class Implicit_Object:
     def fixed_Hessian(self):
         pass
 
-
+    #下面就是想办法把Newton放到外面去 然后再看看整合到soft_body里面 
     @ti.kernel
     def Newton_Method(self, max_iter_num:ti.i32, tol:ti.f32):
 
         #print("Newton Method")
         iter_i = 0
 
-        #给dx=x-x_n一个初值 这里dx取的是真解的负值
+        #记录velocity和node的初值
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.x[i*self.dim+j] = self.node[i][j]
+                self.previous_node[i][j] = self.node[i][j]
+                self.previous_velocity[i*self.dim+j] = self.velocity[i*self.dim+j]
+
+        for i in range(self.vn):
+            for j in ti.static(range(self.dim)):
                 self.dx[i*self.dim+j] = self.dt * self.velocity[i*self.dim+j]
 
         while iter_i < max_iter_num:
@@ -352,24 +353,20 @@ class Implicit_Object:
             self.compute_force_gradient()
             self.assembly()
             
-            self.equationsolver.Jacobi(100, 1e-5)
-            #self.equationsolver.CG(100, 1e-5)
+            # converge if use Jacobi
+            #self.equationsolver.Jacobi(100, 1e-6)
+            self.equationsolver.CG(100, 1e-6)
 
             for i in range(self.vn):
                 for j in ti.static(range(self.dim)):
-                    self.x[i*self.dim+j] += self.dx[i*self.dim+j]
+                    self.node[i][j] += self.dx[i*self.dim+j]                 
 
             norm_F_num = self.field_norm(self.F_num)
             norm_dx = self.field_norm(self.dx)
-            #print(iter_i, norm_F_num, norm_dx)
+            print(iter_i, norm_F_num, norm_dx)
 
-            
             if norm_F_num < tol and norm_dx < tol:
                 break
-             
-            #到底要不要更新这个节点？
-            #for i in range(self.vn):
-            #    for j in ti.static(range(self.dim)):
-            #        self.node[i][j] = self.x[i*self.dim+j]
             
             iter_i += 1
+

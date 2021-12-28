@@ -30,6 +30,7 @@ class Newton_Method:
     @ti.kernel
     def ordinary_Newton(self, max_iter_num:ti.i32, tol:ti.f32):
         iter_i = 0
+
         while iter_i < max_iter_num:
 
             #这一步是正常的没有问题
