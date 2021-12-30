@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>30cab741-c307-4ef7-ad09-965447e5d6f8</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>test_new_simulator.py</StartupFile>
+    <StartupFile>Soft_Body_Simulator.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -25,10 +25,6 @@
     <Compile Include="FEM Soft Body\Explicit_FEM_Soft_Body.py" />
     <Compile Include="FEM Soft Body\Implicit_FEM_Soft_Body.py" />
     <Compile Include="FEM Soft Body\Semi_Implicit_FEM_Soft_Body.py" />
-    <Compile Include="FEM Soft Body\test_new_implicit.py">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="test_new_simulator.py" />
     <Compile Include="Numerical Method\test_taichi_example.py" />
     <Compile Include="Numerical Method\Linear_Equation_Solver.py" />
     <Compile Include="Numerical Method\Newton_Method.py" />

@@ -1,21 +1,59 @@
-                                        
-#Problem1: rendering failure: count inside face, if open only ambient color, then everything will be fine, need to cull inside faces
-#Use sparse data structure to improve
-#improve semi-implicit to implicit
-#add damping 
 
 
 import taichi as ti #version 0.8.7
 import taichi_glsl as ts
+import math
 
 import sys
 sys.path.append('Numerical Method')
 from Linear_Equation_Solver import *
 
 
+ti.init(arch=ti.gpu)
 
 @ti.data_oriented
-class Semi_Implicit_Object:
+class Floor:
+
+    #To draw mesh, need two main parameters position  & indices
+    #face(0)->position 0,1,2->indices 0,1,2
+    #face(1)->position 3,4,5->indices 3,4,5
+    #......
+    #face(N)->3N,3N+1,3N+2->indices 3N,3N+1,3N+2
+
+    def __init__(self, height, scale):
+        self.position = ti.Vector.field(3, dtype=ti.f32, shape=4)
+        self.indices = ti.field(int, shape=2*3)
+        self.height = height
+        self.scale = scale
+        self.color = (0.95,0.99,0.97)
+
+
+    @ti.kernel
+    def initialize(self):
+        h = self.height
+        k = self.scale
+        self.position[0] = [-k, h, -k]
+        self.position[1] = [k, h, -k]
+        self.position[2] = [k, h, k]
+        self.position[3] = [-k, h, k]
+
+        #floor indices
+        N = 2
+        for i, j in ti.ndrange(N, N):
+            if i < N - 1 and j < N - 1:
+                square_id = (i * (N - 1)) + j
+                # 1st triangle of the square
+                self.indices[square_id * 6 + 0] = i * N + j
+                self.indices[square_id * 6 + 1] = i * N + (j + 1)
+                self.indices[square_id * 6 + 2] = (i + 1) * N + j
+                # 2nd triangle of the square
+                self.indices[square_id * 6 + 3] = (i + 1) * N + j
+                self.indices[square_id * 6 + 4] = (i + 1) * N + j + 1
+                self.indices[square_id * 6 + 5] = i * N + j
+
+
+@ti.data_oriented
+class Object:
 
     def __init__(self, filename, index_start=1):
 
@@ -96,7 +134,6 @@ class Semi_Implicit_Object:
         self.b = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
         self.x = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
         self.equationsolver = Linear_Equation_Solver(self.A, self.b, self.x)
-        
 
         print("vertices: ", self.vn, "elements: ", self.en)
 
@@ -161,7 +198,11 @@ class Semi_Implicit_Object:
                     self.initdF[e, n, dim] = self.initdD[e, n, dim] @ self.B[e]
 
 
-
+    #project node to position for rendering
+    @ti.kernel
+    def projection(self):
+        for i in range(self.vn):
+            self.position[i] = 0.2 * self.node[i]
 
     #FEM 1st order change higher order FEM from here
     @ti.func
@@ -224,9 +265,8 @@ class Semi_Implicit_Object:
     @ti.kernel
     def compute_force_gradient(self):
 
-        #竟然是这句代码报的错误 我觉得最不可能出错的代码 真是奇怪
-        for i, j in ti.ndrange(self.dim*self.vn, self.dim*self.vn):
-            self.force_gradient[i, j] = 0.0
+        for i, j in self.force_gradient:
+            self.force_gradient[i, j] = 0
 
         # initialize dF/dx_ij = dD/dx*B for each 
         # notice that dF/dx_ij not equal dF/dF_ij
@@ -298,7 +338,7 @@ class Semi_Implicit_Object:
         # initialize A as big identity matrix A = (I - whatever)
         # size 3-dim*nodes * 3-dim*nodes
         for i, j in self.A:
-            self.A[i, j] = 1.0 if i == j else 0.0
+            self.A[i, j] = 1 if i == j else 0
 
         #assemble A matrix
         for i, j in self.A:
@@ -310,12 +350,172 @@ class Semi_Implicit_Object:
         # size 3-dim*nodes
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.x[i*self.dim+j] = self.dt * self.velocity[i*self.dim+j]
+                self.x[i*self.dim+j] = self.velocity[i*self.dim+j]
 
         # assmeble b matrix
         # size 3-dim*nodes
         for i in range(self.vn):
             for j in ti.static(range(self.dim)):
-                self.b[i*self.dim+j] = self.dt * self.velocity[i*self.dim+j] + self.dt**2 / self.node_mass * self.force[i*self.dim+j]
+                self.b[i*self.dim+j] = self.velocity[i*self.dim+j] + self.dt / self.node_mass * self.force[i*self.dim+j]
 
 
+    #Explicit Euler motion equation
+    @ti.kernel
+    def time_integrate(self, floor_height:ti.f32):
+
+        if curr_equation_solver == 0:
+            self.equationsolver.Jacobi(100, 1e-5)
+        elif curr_equation_solver == 1:
+            self.equationsolver.CG(obj.vn*obj.dim*3, 1e-5)
+
+        mx = -self.inf
+
+        #compute velocity and position of each point
+        for i in range(self.vn):
+            # v_n+1 of each point
+            for j in ti.static(range(self.dim)):
+                self.velocity[i*3+j] = self.x[i*3+j]
+                self.node[i][j] += self.velocity[3*i+j] * self.dt
+
+            #boundary conditions
+            if self.node[i].y < floor_height:
+                self.node[i].y = floor_height
+                # set y speed 0
+                self.velocity[self.dim*i+1] = 0.0
+
+            #ensure force not too large
+            #这一步出了问题
+            vn_force = ti.Vector([self.force[3*i],self.force[3*i+1],self.force[3*i+2]])
+            mx = max(mx, vn_force.norm())
+
+        mx = max(mx, 1)
+
+
+
+#draw coordinate system as assitance
+xi,yi,zi=20,20,20
+position_xyz = ti.Vector.field(3,dtype=ti.f32,shape=xi+yi+zi)
+@ti.kernel
+def initialize_coordsys():
+    for i in range(xi):
+        position_xyz[i] = ti.Vector([i/xi,0,0])
+    for j in range(yi):
+        position_xyz[xi+j]=ti.Vector([0,j/yi,0])
+    for k in range(zi):
+        position_xyz[xi+yi+k]=ti.Vector([0,0,k/zi])
+initialize_coordsys()
+
+
+floor = Floor(0, 1)
+obj = Object('tetrahedral-models/ellell.1', 0)
+
+
+#object parameters
+obj.node_mass = 1.0
+obj.gravity = 10.0
+obj.nu = 0.3
+obj.E = 10000
+obj.dt = 1e-3
+obj.initialize()
+floor.initialize()
+
+#initialize GGUI render and camera
+res = (1080, 1080)
+lightpos = (0.0,1.0,1.0)
+lightcolor = (1.0,1.0,1.0)
+#lightcolor = (0.0,0.0,0.0)
+floor.color = (0.95,0.99,0.97)
+obj.color = (0.99,0.75,0.89)
+ambientcolor = (0.0,0.0,0.0)
+
+window = ti.ui.Window("Semi-Implicit FEM soft body",res,vsync=True)
+canvas = window.get_canvas()
+scene = ti.ui.Scene()
+camera = ti.ui.make_camera()
+camera.position(1.0, 2.0, 2.0)
+camera.lookat(0.0, 0.0, 0.0)
+camera.fov(70)
+
+#linear equation solver
+equationsolver = Linear_Equation_Solver(obj.A, obj.x, obj.b)
+linear_equation_solver = [
+    "Jacobi iteration",
+    "Conjugate Gradient",
+    ]
+curr_equation_solver = 0
+
+def render():
+
+    #arcball in camera like FPS, RMB rotate angle
+    camera.track_user_inputs(window, movement_speed=0.03, hold_key=ti.ui.RMB)
+    scene.set_camera(camera)
+    scene.ambient_light(ambientcolor)
+    scene.point_light(pos=lightpos, color=lightcolor)
+
+    #rendering mesh and points
+    scene.mesh(floor.position,
+               floor.indices,
+               color=floor.color,
+               per_vertex_color=None,
+               two_sided=True)
+
+    #rendering object
+    obj.projection()
+    scene.mesh(obj.position,
+               obj.indices,
+               color=obj.color,
+               per_vertex_color=None,
+               two_sided=True)
+
+    #rendering coordinate system
+    scene.particles(position_xyz, 
+                    radius=0.005, 
+                    color=(0.0,1.0,1.0))
+
+    #render scene
+    canvas.scene(scene)
+
+def imgui_options():
+    window.GUI.begin("Presents", 0.05, 0.05, 0.2, 0.4)
+
+    #parameters
+    obj.E = window.GUI.slider_float("Elasticity modulus", obj.E, 5000, 20000)
+    obj.nu = window.GUI.slider_float("Poisson ratio", obj.nu, 0.01, 0.49)
+    obj.gravity = window.GUI.slider_float("gravity", obj.gravity, -10.0, 10.0)
+    obj.node_mass = window.GUI.slider_float("node_mass", obj.node_mass, 0.0, 2.0)
+
+    #control object floor light color
+    obj.color = window.GUI.color_edit_3("objectcolor",obj.color)
+    floor.color = window.GUI.color_edit_3("floorcolor",floor.color)
+
+    global curr_equation_solver
+    old_present = curr_equation_solver
+    for i in range(len(linear_equation_solver)):
+        if window.GUI.checkbox(linear_equation_solver[i], curr_equation_solver == i):
+            curr_equation_solver = i
+    if curr_equation_solver != old_present:
+        obj.initialize()
+
+    if window.GUI.button("restart"):
+        obj.initialize()
+
+
+    window.GUI.end()
+
+
+while window.running:
+
+    #lame parameters
+    obj.mu[None] = obj.E / (2 * (1 + obj.nu))
+    obj.la[None] = obj.E * obj.nu / ((1 + obj.nu) * (1 - 2 * obj.nu))
+
+    for i in range(10):
+        obj.compute_force(obj.node_mass, obj.gravity)
+        obj.compute_force_gradient()
+        obj.assembly()
+        obj.time_integrate(floor.height)
+
+    render()
+    imgui_options()
+
+    window.show()

@@ -1,3 +1,8 @@
+# 可以了 在test_new_simulator和test_new_implicit上面大胆更新吧
+# 先不用考虑代码维护的事情了
+# 这完全不应该这样 写了三天的Newton了 到现在都没有写好
+# 果然 最后还是错在了运动学方程上
+# 把运动学方程转换成xn的吧
 
 
 import taichi as ti #version 0.8.7
@@ -5,7 +10,8 @@ import taichi_glsl as ts
 
 import sys
 sys.path.append('FEM Soft Body')
-from Semi_Implicit_FEM_Soft_Body import *
+from Implicit_FEM_Soft_Body import *
+
 
 ti.init(arch=ti.gpu)
 
@@ -48,7 +54,7 @@ class Floor:
                 self.indices[square_id * 6 + 3] = (i + 1) * N + j
                 self.indices[square_id * 6 + 4] = (i + 1) * N + j + 1
                 self.indices[square_id * 6 + 5] = i * N + j
-                
+
 
 @ti.data_oriented
 class Soft_Body_Simulator:
@@ -71,14 +77,8 @@ class Soft_Body_Simulator:
             self.position_xyz[self.xi+self.yi+k]=ti.Vector([0,0,k/self.zi])
 
 
-
-
-
-
 floor = Floor(0, 1)
-#首先这里可以采用if else分别设置obj等于什么 我这里还有有点没有想明白 我为什么要在外面封装Newton来着
-obj = Semi_Implicit_Object('tetrahedral-models/ellell.1', 0)
-#obj = Implicit_Object('tetrahedral-models/ellell.1', 0)
+obj = Implicit_Object('tetrahedral-models/ellell.1', 0)
 simulator = Soft_Body_Simulator()
 
 
@@ -88,49 +88,26 @@ obj.gravity = 10.0
 obj.nu = 0.3
 obj.E = 10000
 obj.dt = 1e-3
+obj.linesearch = 0.5
 obj.initialize()
 floor.initialize()
 simulator.initialize_coordsys()
 
 
-
-@ti.pyfunc
-def field_norm(x:ti.template()):
-    result = 0.0
-    for i in range(x.shape[0]):
-        result += x[i]**2
-    return result
-
-@ti.pyfunc
-def matrix_field_norm(x:ti.template()):
-    result = 0.0
-    for i,j in ti.ndrange(x.shape[0],x.shape[0]):
-        result += x[i,j]**2
-    return result
-
-
 @ti.kernel
-def semi_implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
-
-    if curr_equation_solver == 0:
-        obj.equationsolver.Jacobi(100, 1e-5)
-    elif curr_equation_solver == 1:
-        obj.equationsolver.CG(obj.vn*obj.dim*3, 1e-5)
+#这里带着NewtonMethod求出来的正确velocity进入迭代计算真正的下一步node的位置
+def implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
 
     #compute velocity and position of each point
     for i in range(obj.vn):
         for j in ti.static(range(obj.dim)):
-            obj.velocity[i*obj.dim+j] = obj.x[i*obj.dim+j] / obj.dt
-            obj.node[i][j] += obj.x[i*obj.dim+j]
+            #在Newton里面更新过node了 这里只需要更新velocity就可以了
+            obj.velocity[i*obj.dim+j] = (obj.node[i][j] - obj.previous_node[i][j]) / obj.dt
 
         #boundary conditions
         if obj.node[i].y < floor_height:
             obj.node[i].y = floor_height
-            # set y speed 0
             obj.velocity[obj.dim*i+1] = 0.0
-
-    #计算velocity的norm
-    #print(field_norm(obj.vn*obj.dim, obj.velocity))
 
     # object position projection
     for i in range(obj.vn):
@@ -228,17 +205,16 @@ while window.running:
     obj.mu[None] = obj.E / (2 * (1 + obj.nu))
     obj.la[None] = obj.E * obj.nu / ((1 + obj.nu) * (1 - 2 * obj.nu))
 
+    #这个range只表示一帧运算几次 只会影响速度 不会影响精度
     for i in range(10):
-        obj.compute_force(obj.node_mass, obj.gravity)
-        obj.compute_force_gradient()
-        obj.assembly()
-        semi_implicit_time_integrate(floor.height, 0.2)
+        
+        obj.Newton_Method(100, 1e-6)
+        implicit_time_integrate(floor.height, 0.2)
 
     render()
     imgui_options()
 
     window.show()
-
 
 
 
