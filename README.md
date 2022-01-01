@@ -16,5 +16,7 @@ TODO LIST:
 
 6 Add Gaussian quadrature for higher order FEM
 
-7 ...
+7 Add fixed Hessian
+
+8 ...
 
