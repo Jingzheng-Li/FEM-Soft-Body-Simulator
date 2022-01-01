@@ -18,5 +18,7 @@ TODO LIST:
 
 7 Add fixed Hessian
 
-8 ...
+8 Add damped Newton Method
+
+9 ...
 
