@@ -1,16 +1,13 @@
-# 可以了 在test_new_simulator和test_new_implicit上面大胆更新吧
-# 先不用考虑代码维护的事情了
-# 这完全不应该这样 写了三天的Newton了 到现在都没有写好
-# 果然 最后还是错在了运动学方程上
-# 把运动学方程转换成xn的吧
 
 
 import taichi as ti #version 0.8.7
 import taichi_glsl as ts
 
+
 import sys
 sys.path.append('FEM Soft Body')
 from Implicit_FEM_Soft_Body import *
+#from test_new_implicit import *
 
 
 ti.init(arch=ti.gpu)
@@ -60,10 +57,8 @@ class Floor:
 class Soft_Body_Simulator:
     def __init__(self):
         self.position = ti.Vector.field(3, dtype=ti.f32, shape=4)
-        #直角坐标系 辅助
         self.xi, self.yi, self.zi = 20, 20, 20
         self.position_xyz = ti.Vector.field(3,dtype=ti.f32,shape=self.xi+self.yi+self.zi)
-        #我可以在这里写两个 一个是Newton的 一个是equationsolver的
 
 
     #draw coordinate system as assitance
@@ -77,31 +72,12 @@ class Soft_Body_Simulator:
             self.position_xyz[self.xi+self.yi+k]=ti.Vector([0,0,k/self.zi])
 
 
-floor = Floor(0, 1)
-obj = Implicit_Object('tetrahedral-models/ellell.1', 0)
-simulator = Soft_Body_Simulator()
-
-
-#object parameters
-obj.node_mass = 1.0
-obj.gravity = 10.0
-obj.nu = 0.3
-obj.E = 10000
-obj.dt = 1e-3
-obj.linesearch = 0.5
-obj.initialize()
-floor.initialize()
-simulator.initialize_coordsys()
-
-
 @ti.kernel
-#这里带着NewtonMethod求出来的正确velocity进入迭代计算真正的下一步node的位置
 def implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
 
     #compute velocity and position of each point
     for i in range(obj.vn):
         for j in ti.static(range(obj.dim)):
-            #在Newton里面更新过node了 这里只需要更新velocity就可以了
             obj.velocity[i*obj.dim+j] = (obj.node[i][j] - obj.previous_node[i][j]) / obj.dt
 
         #boundary conditions
@@ -115,12 +91,21 @@ def implicit_time_integrate(floor_height:ti.f32, modelscale:ti.f32):
 
 
 
+floor = Floor(0, 1)
+obj = Implicit_Object('tetrahedral-models/ellell.1', 0)
+simulator = Soft_Body_Simulator()
+
+
+#object parameters
+obj.initialize()
+floor.initialize()
+simulator.initialize_coordsys()
+
 
 #initialize GGUI render and camera
 res = (1080, 1080)
 lightpos = (0.0,1.0,1.0)
 lightcolor = (1.0,1.0,1.0)
-#lightcolor = (0.0,0.0,0.0)
 floor.color = (0.95,0.99,0.97)
 obj.color = (0.99,0.75,0.89)
 ambientcolor = (0.0,0.0,0.0)
@@ -171,11 +156,12 @@ def render():
     #render scene
     canvas.scene(scene)
 
+
 def imgui_options():
     window.GUI.begin("Presents", 0.05, 0.05, 0.2, 0.4)
 
     #parameters
-    obj.E = window.GUI.slider_float("Elasticity modulus", obj.E, 5000, 20000)
+    obj.E = window.GUI.slider_float("Elasticity modulus", obj.E, 1000, 20000)
     obj.nu = window.GUI.slider_float("Poisson ratio", obj.nu, 0.01, 0.49)
     obj.gravity = window.GUI.slider_float("gravity", obj.gravity, -10.0, 10.0)
     obj.node_mass = window.GUI.slider_float("node_mass", obj.node_mass, 0.0, 2.0)
@@ -183,6 +169,7 @@ def imgui_options():
     #control object floor light color
     obj.color = window.GUI.color_edit_3("objectcolor",obj.color)
     floor.color = window.GUI.color_edit_3("floorcolor",floor.color)
+    obj.modelscale = window.GUI.slider_float("modelscale", obj.modelscale, 0.1, 0.4)
 
     global curr_equation_solver
     old_present = curr_equation_solver
@@ -195,7 +182,6 @@ def imgui_options():
     if window.GUI.button("restart"):
         obj.initialize()
 
-
     window.GUI.end()
 
 
@@ -205,15 +191,18 @@ while window.running:
     obj.mu[None] = obj.E / (2 * (1 + obj.nu))
     obj.la[None] = obj.E * obj.nu / ((1 + obj.nu) * (1 - 2 * obj.nu))
 
-    #这个range只表示一帧运算几次 只会影响速度 不会影响精度
-    for i in range(10):
+    # in dt=1e-2 range=1
+    # in dt=1e-3 range=10
+    for i in range(1): 
         
-        obj.Newton_Method(100, 1e-6)
-        implicit_time_integrate(floor.height, 0.2)
+        #obj.ordinary_Newton(100, 1e-6)
+        obj.damped_Newton(100, 1e-6)
+
+        implicit_time_integrate(floor.height, obj.modelscale)
 
     render()
     imgui_options()
-
+    
     window.show()
 
 

@@ -1,4 +1,9 @@
 
+# 修改CG和Jacobi 支持并行
+# 加入Cholesk decompostion
+# 可以加入MGPCG
+
+
 import taichi as ti
 import time
 
@@ -17,9 +22,16 @@ class Linear_Equation_Solver:
         self.d = ti.field(dtype=ti.f32, shape=self.matrixsize)
         self.q = ti.field(dtype=ti.f32, shape=self.matrixsize)
 
-    # Jacobi iteration
-    # 这个先改成pyfunc既能在python 又能在taichi里面走
+    # ti.func可以调用ti.func
     @ti.func
+    def dot(self, v1, v2):
+        result = 0.0
+        for i in range(self.NV):
+            result += v1[i][0] * v2[i][0]
+            result += v1[i][1] * v2[i][1]
+        return result
+
+    @ti.kernel
     def Jacobi(self, max_iter_num:ti.i32, tol:ti.f32):
         n = self.matrixsize
         iter_i = 0
@@ -36,7 +48,7 @@ class Linear_Equation_Solver:
             for i in range(n):
                 self.x[i] = self.x_new[i]
 
-            res = 0.0 #!!!
+            res = 0.0
             for i in range(n):
                 r = self.b[i]*1.0
                 for j in range(n):
@@ -50,9 +62,9 @@ class Linear_Equation_Solver:
         #print("Jacobi iteration:", iter_i, res)
 
 
-    @ti.func
+    @ti.kernel
     def CG(self, max_iter_num:ti.i32, tol:ti.f32): # conjugate gradient
-        
+
         n = self.matrixsize
         
         for i in range(n): 
@@ -103,7 +115,8 @@ class Linear_Equation_Solver:
             for i in range(n):
                 delta_new += self.r[i] * self.r[i]
 
-            if delta_new < tol: break
+            if delta_new < tol: 
+                break
 
             beta = delta_new / delta_old
 
