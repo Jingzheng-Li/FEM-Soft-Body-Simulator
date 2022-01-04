@@ -4,13 +4,14 @@ FEM Soft Body Simulator
 
 TODO LIST:
 
-1 Add Incomplete Cholesky factorization preconditoner CG (ICCPCG)
+1 ~~Add Incomplete Cholesky factorization preconditoner CG (ICCPCG)~~
+  (ICC is too slow, figure it out)
 
 2 Add Multigrid preconditioner CG (MGPCG)
 
-3 Add damped Newton
+3 ~~Add damped Newton~~
 
-4 Parallelize Linear Equation Solver
+4 ~~Parallelize Linear Equation Solver~~
 
 5 Encapsulation Newton Method
 
@@ -18,7 +19,5 @@ TODO LIST:
 
 7 Add fixed Hessian
 
-8 Add damped Newton Method
-
-9 ...
+8 ...
 
