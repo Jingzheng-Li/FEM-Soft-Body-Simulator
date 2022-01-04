@@ -1,5 +1,4 @@
 
-
 import taichi as ti #version 0.8.7
 import taichi_glsl as ts
 
@@ -122,9 +121,15 @@ camera.fov(70)
 linear_equation_solver = [
     "Jacobi iteration",
     "Conjugate Gradient",
+    "ICC Precondition CG",
+    ]
+implicit_method = [
+    "Semi-implicit",
+    "Implicit",
     ]
 
 curr_equation_solver = 0
+curr_implicit_method = 0
 
 def render():
 
@@ -172,11 +177,19 @@ def imgui_options():
     obj.modelscale = window.GUI.slider_float("modelscale", obj.modelscale, 0.1, 0.4)
 
     global curr_equation_solver
-    old_present = curr_equation_solver
+    old_equation_solver = curr_equation_solver
     for i in range(len(linear_equation_solver)):
         if window.GUI.checkbox(linear_equation_solver[i], curr_equation_solver == i):
             curr_equation_solver = i
-    if curr_equation_solver != old_present:
+    if curr_equation_solver != old_equation_solver:
+        obj.initialize()
+
+    global curr_implicit_method
+    old_implicit_method = curr_implicit_method
+    for i in range(len(implicit_method)):
+        if window.GUI.checkbox(implicit_method[i], curr_implicit_method == i):
+            curr_implicit_method = i
+    if curr_implicit_method != old_implicit_method:
         obj.initialize()
 
     if window.GUI.button("restart"):
@@ -193,10 +206,14 @@ while window.running:
 
     # in dt=1e-2 range=1
     # in dt=1e-3 range=10
-    for i in range(1): 
+    for i in range(10): 
         
-        #obj.ordinary_Newton(100, 1e-6)
-        obj.damped_Newton(100, 1e-6)
+        if curr_implicit_method == 0:        
+            obj.one_step_Newton()
+
+        elif curr_implicit_method == 1:
+            #obj.ordinary_Newton(100, 1e-6)
+            obj.damped_Newton(100, 1e-6)
 
         implicit_time_integrate(floor.height, obj.modelscale)
 
@@ -204,9 +221,4 @@ while window.running:
     imgui_options()
     
     window.show()
-
-
-
-
-
 

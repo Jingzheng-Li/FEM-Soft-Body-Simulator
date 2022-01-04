@@ -58,7 +58,7 @@ class Implicit_Object:
 
 
         # for simulation
-        self.dt = 1e-2
+        self.dt = 1e-3
         self.gravity = 10.0
         self.E = 5000 # Young's modulus
         self.nu = 0.3 # Poisson's ratio: nu [0, 0.5)
@@ -368,6 +368,17 @@ class Implicit_Object:
                 self.node[i][j] += self.dx[i*self.dim+j] 
 
 
+    def one_step_Newton(self):
+        self.initialize_Newton()
+        self.compute_force(self.node_mass, self.gravity)
+        self.compute_force_gradient()
+        self.assemble_F_num()
+        self.assemble_F_Jac()
+        #self.equationsolver.Jacobi(100, 1e-6)
+        self.equationsolver.CG(100, 1e-6)
+        #self.equationsolver.ICC_PCG(100, 1e-6)
+        self.update_ordinary_Newton_node()
+
 
     def ordinary_Newton(self, max_iter_num:ti.i32, tol:ti.f32):
 
@@ -379,10 +390,11 @@ class Implicit_Object:
             self.compute_force_gradient()
             self.assemble_F_num()
             self.assemble_F_Jac()
-            
+
             #self.equationsolver.Jacobi(100, 1e-6)
             self.equationsolver.CG(100, 1e-6)
-                
+            #self.equationsolver.ICC_PCG(100, 1e-6)
+
             self.update_ordinary_Newton_node()
 
             norm_F_num = self.field_norm(self.F_num)
@@ -390,12 +402,6 @@ class Implicit_Object:
 
             if norm_F_num < tol and norm_dx < tol:
                 break
-
-
-
-
-
-
 
 
     @ti.kernel
@@ -432,6 +438,7 @@ class Implicit_Object:
             for j in ti.static(range(self.dim)):
                 self.node[i][j] = self.current_node[i][j] + alpha * self.dx[i*self.dim+j]
 
+
     def damped_Newton(self, max_iter_num:ti.i32, tol:ti.f32):
 
         self.initialize_Newton()
@@ -457,7 +464,7 @@ class Implicit_Object:
             self.update_F_temp(alpha)
             norm_F_temp = self.field_norm(self.F_num)
             # if iter_i less than 10 may cause dt too small and stuck in while for nrom_F_temp keep in unchange
-            while norm_F_temp > (1.0-mu*alpha)*norm_F_num and iter_i > 10:
+            while norm_F_temp > (1.0-mu*alpha) * norm_F_num and iter_i > 10:
                 alpha *= 0.5
                 self.update_F_temp(alpha)
                 norm_F_temp = self.field_norm(self.F_num)
@@ -465,9 +472,9 @@ class Implicit_Object:
             alpha1 = alpha2
             alpha2 = alpha
 
-            self.update_damped_Newton_node(alpha2)
+            self.update_damped_Newton_node(alpha)
 
             if norm_F_num < tol and norm_dx < tol:
                 break
 
-            #print(iter_i, "stepsize", alpha2)
+            #print(iter_i, "stepsize", alpha)

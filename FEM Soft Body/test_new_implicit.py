@@ -1,11 +1,4 @@
-# 明天时间不多 能完成一两项就可以了
-# 最好能够封装
-# 明天任务：封装Newton 
-# 加上fixed Hessian
-# 加上damped Newton做line search
-# 加上PCG方法
-# 加上damping
-# 半隐式再大步长情况下一下子就炸掉了 隐式还有可能能回来
+
 
 import taichi as ti #version 0.8.7
 import taichi_glsl as ts
@@ -65,13 +58,14 @@ class Implicit_Object:
 
 
         # for simulation
-        self.dt = 1e-2
+        self.dt = 1e-3
         self.gravity = 10.0
         self.E = 5000 # Young's modulus
         self.nu = 0.3 # Poisson's ratio: nu [0, 0.5)
         self.node_mass = 1.0
         self.mu = ti.field(dtype=ti.f32, shape=())
         self.la = ti.field(dtype=ti.f32, shape=())
+        self.modelscale = 0.2
         self.color = (0.99,0.75,0.89)
 
         
@@ -101,12 +95,11 @@ class Implicit_Object:
         self.F_num = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
         self.dx = ti.field(dtype=ti.f32, shape=self.dim*self.vn) # dx是x-x_n
         self.equationsolver = Linear_Equation_Solver(self.F_Jac, self.F_num, self.dx)
-        #用来记录NewtonMethod每次迭代当前node的 知道求出真正的velocity之后才能更新
+        # record of xn Newton Method update only when calculate velocity vn+1
         self.previous_node = ti.Vector.field(self.dim, dtype=ti.f32, shape=self.vn)
+        # record of vn Newton Method
         self.previous_velocity = ti.field(dtype=ti.f32, shape=self.dim*self.vn)
-        #这里定义的都是python scope里面的值 没有办法在taichi scope里面修改 只能定义成全局变量
-        #self.norm_F_num = ti.field(dtype=ti.f32, shape=())
-        #self.norm_dx = ti.field(dtype=ti.f32, shape=())
+
 
         #for damped Newton
         #self.alpha = ti.field(dtype=ti.f32, shape=())
@@ -208,7 +201,7 @@ class Implicit_Object:
 
     #compute force for each vertex E_total = E_strain + E_kinetic
     @ti.kernel
-    def compute_force(self, node_mass:float, gravity:float):
+    def compute_force(self, node_mass:ti.f32, gravity:ti.f32):
 
         #add gravity
         for i in range(self.vn):
